@@ -1,21 +1,28 @@
 import { Router } from "express";
-import { videoPostController, videoRootController } from "../controllers/video-controller.js";
+import {
+    videoGetController,
+    videoPostController,
+    videoRootController,
+} from "../controllers/video-controller.js";
 import multer from "multer";
 import { randomUUIDv7 } from "crypto";
 import { mkdirSync } from "fs";
+import { extname } from "path";
+import { UPLOAD_DIR } from "../config.js";
 
-const UPLOAD_DIR = "user-uploads";
 mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const upload = multer({
     storage: multer.diskStorage({
         destination: UPLOAD_DIR,
         filename(req, file, callback) {
-            callback(null, randomUUIDv7());
+            const ext = extname(file.originalname).toLowerCase();
+            callback(null, randomUUIDv7() + (/^\.[a-z0-9]{1,8}$/.test(ext) ? ext : ""));
         },
     }),
 });
 
 export const videoRoutes = Router()
     .get("/", videoRootController)
+    .get("/:id", videoGetController)
     .post("/", upload.single("file"), videoPostController);
