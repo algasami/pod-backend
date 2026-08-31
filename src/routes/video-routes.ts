@@ -9,6 +9,7 @@ import { randomUUIDv7 } from "crypto";
 import { mkdirSync } from "fs";
 import { UPLOAD_DIR, UPLOAD_MAX_BYTES, UPLOAD_MAX_MB } from "../config.js";
 import { uploadCooldown } from "../middlewares/upload-cooldown.js";
+import { requireAuth } from "../middlewares/require-auth.js";
 import { ALLOWED_UPLOAD_EXTENSIONS, resolveUploadExtension } from "../services/video-types.js";
 
 mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -63,4 +64,6 @@ const uploadSingle: RequestHandler = (req, res, next) =>
 export const videoRoutes = Router()
     .get("/", videoRootController)
     .get("/:id", videoGetController)
-    .post("/", uploadCooldown, uploadSingle, videoPostController);
+    // requireAuth runs first so an unauthenticated caller neither claims a
+    // cooldown slot nor streams a body onto disk.
+    .post("/", requireAuth, uploadCooldown, uploadSingle, videoPostController);

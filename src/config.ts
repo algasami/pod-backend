@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { resolve } from "path";
 
 export const UPLOAD_DIR = resolve(process.cwd(), "user-uploads");
@@ -43,6 +44,37 @@ export const CLEANUP_INTERVAL_MINUTES = readPositiveNumber(
     "CLEANUP_INTERVAL_MINUTES",
     Math.min(5, UPLOAD_TTL_MINUTES),
 );
+
+// Authentication is SSH-shaped: the server keeps the clients' public keys and
+// a client proves it holds the matching private key. See services/auth-keys.ts
+// for the file format.
+export const AUTHORIZED_KEYS_PATH =
+    process.env.AUTHORIZED_KEYS_PATH?.trim() || resolve(process.cwd(), "authorized_keys");
+
+// Auth can be switched off for local work, but never silently: leaving it on
+// with an empty key file locks everyone out, which is the safer accident.
+export const AUTH_REQUIRED = process.env.AUTH_REQUIRED?.trim().toLowerCase() !== "false";
+
+// A challenge only has to survive one round trip.
+export const AUTH_CHALLENGE_TTL_SECONDS = readPositiveNumber("AUTH_CHALLENGE_TTL_SECONDS", 60);
+
+export const AUTH_TOKEN_TTL_MINUTES = readPositiveNumber("AUTH_TOKEN_TTL_MINUTES", 60);
+
+// Without a configured secret the server picks one at boot, which is fine for a
+// single process — it just means every restart invalidates outstanding tokens
+// and clients have to sign a fresh challenge.
+export const AUTH_TOKEN_SECRET = (() => {
+    const configured = process.env.AUTH_TOKEN_SECRET?.trim();
+    if (configured) return Buffer.from(configured, "utf8");
+    console.warn("[auth] AUTH_TOKEN_SECRET is unset; tokens will not survive a restart.");
+    return randomBytes(32);
+})();
+
+// Pending challenges are unauthenticated state, so they are capped.
+export const AUTH_MAX_PENDING_CHALLENGES = 1024;
+
+export const AUTH_CHALLENGE_TTL_MS = AUTH_CHALLENGE_TTL_SECONDS * 1000;
+export const AUTH_TOKEN_TTL_MS = AUTH_TOKEN_TTL_MINUTES * 60_000;
 
 export const UPLOAD_MAX_BYTES = Math.floor(UPLOAD_MAX_MB * 1024 * 1024);
 export const UPLOAD_COOLDOWN_MS = UPLOAD_COOLDOWN_SECONDS * 1000;
