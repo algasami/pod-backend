@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { stat } from "fs";
 import { extname, join } from "path";
-import { UPLOAD_DIR } from "../config.js";
+import { UPLOAD_DIR, UPLOAD_TTL_MS } from "../config.js";
 import { renderDownloadPage } from "../views/download-page.js";
 
 const ID_PATTERN = /^[0-9a-f-]{36}(\.[a-z0-9]{1,8})?$/i;
@@ -30,14 +30,17 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
 
     if (wantsHtml && !raw && !inline) {
         const rawUrl = `${req.baseUrl}/${encodeURIComponent(id)}?raw=1`;
-        return stat(join(UPLOAD_DIR, id), (err) => {
+        return stat(join(UPLOAD_DIR, id), (err, stats) => {
             if (err) {
                 if (err.code === "ENOENT") {
                     return res.status(404).json({ message: "Video not found." });
                 }
                 return next(err);
             }
-            res.type("html").send(renderDownloadPage(filename, rawUrl));
+            // The cleanup sweep expires files by mtime, so the same clock drives the
+            // countdown the page shows.
+            const remainingMs = stats.mtimeMs + UPLOAD_TTL_MS - Date.now();
+            res.type("html").send(renderDownloadPage(filename, rawUrl, remainingMs));
         });
     }
 
