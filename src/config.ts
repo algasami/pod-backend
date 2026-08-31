@@ -3,7 +3,7 @@ import { resolve } from "path";
 export const UPLOAD_DIR = resolve(process.cwd(), "user-uploads");
 export const RESOURCES_DIR = resolve(process.cwd(), "resources");
 
-export const LOGO_PATH = resolve(RESOURCES_DIR, "logo_resource.png");
+export const LOGO_PATH = resolve(RESOURCES_DIR, "logo_text_only.png");
 export const INTRO_PATH = resolve(RESOURCES_DIR, "YT片頭.mp4");
 
 export const FFMPEG_BIN = process.env.FFMPEG_BIN ?? "ffmpeg";
