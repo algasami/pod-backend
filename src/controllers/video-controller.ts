@@ -4,6 +4,7 @@ import { stat } from "fs";
 import { extname, join } from "path";
 import { UPLOAD_DIR, UPLOAD_TTL_MS } from "../config.js";
 import { renderDownloadPage } from "../views/download-page.js";
+import { serveTypeForExtension } from "../services/video-types.js";
 
 const ID_PATTERN = /^[0-9a-f-]{36}(\.[a-z0-9]{1,8})?$/i;
 
@@ -45,12 +46,11 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
         });
     }
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+        "Content-Type": serveTypeForExtension(ext),
+    };
     if (!inline) {
         headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-    }
-    if (!ext) {
-        headers["Content-Type"] = "video/mp4";
     }
 
     res.sendFile(id, { root: UPLOAD_DIR, headers }, (err) => {

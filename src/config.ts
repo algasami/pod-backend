@@ -23,21 +23,57 @@ export const PORT = readPositiveNumber("PORT", 3380);
 
 export const UPLOAD_TTL_MINUTES = readPositiveNumber("UPLOAD_TTL_MINUTES", 30);
 
+export const UPLOAD_MAX_MB = readPositiveNumber("UPLOAD_MAX_MB", 256);
+
+export const UPLOAD_COOLDOWN_SECONDS = readNonNegativeNumber("UPLOAD_COOLDOWN_SECONDS", 10);
+
+// The cooldown keys on the caller's address, so it is only meaningful if the
+// address is the caller's and not the tunnel's. The default trusts an
+// X-Forwarded-For only when the connection itself came from loopback, which is
+// exactly the shape of a local tunnel client (cloudflared, ngrok) and nothing
+// reachable from outside the box.
+export const TRUST_PROXY = readTrustProxy("TRUST_PROXY", "loopback");
+
 export const CLEANUP_INTERVAL_MINUTES = readPositiveNumber(
     "CLEANUP_INTERVAL_MINUTES",
     Math.min(5, UPLOAD_TTL_MINUTES),
 );
 
+export const UPLOAD_MAX_BYTES = Math.floor(UPLOAD_MAX_MB * 1024 * 1024);
+export const UPLOAD_COOLDOWN_MS = UPLOAD_COOLDOWN_SECONDS * 1000;
+
 export const UPLOAD_TTL_MS = UPLOAD_TTL_MINUTES * 60_000;
 export const CLEANUP_INTERVAL_MS = CLEANUP_INTERVAL_MINUTES * 60_000;
 
 function readPositiveNumber(name: string, fallback: number) {
+    return readNumber(name, fallback, (value) => value > 0, "a positive number");
+}
+
+function readNonNegativeNumber(name: string, fallback: number) {
+    return readNumber(name, fallback, (value) => value >= 0, "zero or a positive number");
+}
+
+function readNumber(
+    name: string,
+    fallback: number,
+    accept: (value: number) => boolean,
+    expected: string,
+) {
     const raw = process.env[name];
     if (raw === undefined || raw.trim() === "") return fallback;
 
     const value = Number(raw);
-    if (!Number.isFinite(value) || value <= 0) {
-        throw new Error(`${name} must be a positive number, received "${raw}".`);
+    if (!Number.isFinite(value) || !accept(value)) {
+        throw new Error(`${name} must be ${expected}, received "${raw}".`);
     }
     return value;
+}
+
+function readTrustProxy(name: string, fallback: string): boolean | number | string {
+    const raw = process.env[name]?.trim();
+    if (raw === undefined || raw === "") return fallback;
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    if (/^\d+$/.test(raw)) return Number(raw);
+    return raw;
 }
