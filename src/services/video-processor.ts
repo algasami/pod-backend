@@ -116,18 +116,25 @@ function verticalCrop(width: number, height: number) {
 /**
  * Output size for a take the operator flagged as vertical.
  *
- * Derived from the aspect rather than by scaling the crop on each axis, because
- * independent rounding drifts: a 4K pillarbox crops to 1216x2160, whose ratio is
- * a couple of pixels off 9:16, and scaling that lands on 1080x1918. The crop's
- * own ratio is allowed to be a pixel out; the delivered frame's is not.
+ * The height is derived from the aspect rather than by scaling the crop on each
+ * axis, because independent rounding drifts: a 4K pillarbox crops to 1216x2160,
+ * whose ratio is already a shade off 9:16, and scaling that lands on 1080x1918
+ * instead of 1080x1920.
+ *
+ * Exact 9:16 in even integers only lands when the width is a multiple of 18, so
+ * the result is the closest even pair rather than a guaranteed 0.5625 — 1080p in
+ * gives 608x1080, 4K in gives a true 1080x1920. The height is clamped to the
+ * crop so the derived value can never stretch the picture: a 406x720 crop asks
+ * for 722 rows and must not be handed them.
  *
  * Below the ceiling the native crop is kept rather than upscaled — a 1080p
  * pillarboxed source only holds 608 columns of real picture, and inventing the
  * missing ones would not add detail.
  */
-function fitVerticalSize(cropWidth: number) {
+function fitVerticalSize(cropWidth: number, cropHeight: number) {
     const width = toEven(Math.min(OUT_MAX_SHORT_SIDE, cropWidth));
-    return { width, height: toEven(width / VERTICAL_ASPECT) };
+    const height = Math.min(toEven(cropHeight), toEven(width / VERTICAL_ASPECT));
+    return { width, height };
 }
 
 /**
@@ -202,7 +209,7 @@ export async function processVideo(inputFilename: string, opts: ProcessOptions):
     const needsCrop = cropped.width !== width || cropped.height !== height;
 
     const out = opts.vertical
-        ? fitVerticalSize(cropped.width)
+        ? fitVerticalSize(cropped.width, cropped.height)
         : fitOutputSize(cropped.width, cropped.height);
     const needsScale = out.width !== cropped.width || out.height !== cropped.height;
 
