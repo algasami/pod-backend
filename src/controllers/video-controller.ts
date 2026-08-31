@@ -76,13 +76,13 @@ export const videoPostController: RequestHandler = async (req, res, next) => {
 
     const raw = req.file.filename;
     const watermark = req.body?.watermark === "1";
-
-    if (!watermark) {
-        return res.json({ message: "Success", id: raw });
-    }
+    const vertical = req.body?.vertical === "1";
 
     try {
-        const id = await processVideo(raw);
+        // Always offered to the processor, even with both flags off: it still
+        // has to bring anything above 1080p down. It returns the upload
+        // untouched when there is genuinely nothing to do.
+        const id = await processVideo(raw, { watermark, vertical });
         res.json({ message: "Success", id });
     } catch (err) {
         console.error("[process] failed, serving raw upload", err);

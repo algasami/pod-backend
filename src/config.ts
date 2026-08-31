@@ -8,6 +8,12 @@ export const LOGO_PATH = resolve(RESOURCES_DIR, "logo_text_only.png");
 export const FFMPEG_BIN = process.env.FFMPEG_BIN ?? "ffmpeg";
 export const FFPROBE_BIN = process.env.FFPROBE_BIN ?? "ffprobe";
 
+// A 1080p ceiling that does not impose a shape: whatever the source's aspect
+// ratio, the *short* side is brought down to at most this, and the long side
+// follows the ratio. 16:9 lands on 1920x1080, 9:16 on 1080x1920. Sources below
+// the ceiling are never upscaled.
+export const OUT_MAX_SHORT_SIDE = 1080;
+
 export const OUT_VIDEO_BITRATE = "8M";
 export const OUT_AUDIO_BITRATE = "384k";
 export const OUT_SAMPLE_RATE = 48000;
