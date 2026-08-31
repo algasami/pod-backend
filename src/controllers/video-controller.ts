@@ -45,20 +45,27 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
             res.type("html").send(renderDownloadPage(filename, rawUrl, remainingMs));
         });
     }
-
-    const headers: Record<string, string> = {
-        "Content-Type": serveTypeForExtension(ext),
-    };
-    if (!inline) {
-        headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-    }
-
-    res.sendFile(id, { root: UPLOAD_DIR, headers }, (err) => {
-        if (!err || res.headersSent) return;
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+    stat(join(UPLOAD_DIR, id), (err, stats) => {
+        if (err) {
+            return next(err);
+        }
+        if (stats.mtimeMs + UPLOAD_TTL_MS - Date.now() <= 0) {
             return res.status(404).json({ message: "Video not found." });
         }
-        next(err);
+        const headers: Record<string, string> = {
+            "Content-Type": serveTypeForExtension(ext),
+        };
+        if (!inline) {
+            headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+        }
+
+        res.sendFile(id, { root: UPLOAD_DIR, headers }, (err) => {
+            if (!err || res.headersSent) return;
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+                return res.status(404).json({ message: "Video not found." });
+            }
+            next(err);
+        });
     });
 };
 

@@ -20,7 +20,7 @@ app.use(videoRoutes);
 
 app.use(errorHandler);
 
-const stopUploadCleanup = startUploadCleanup();
+// const stopUploadCleanup = startUploadCleanup();
 console.log(`Uploads are removed ${UPLOAD_TTL_MINUTES} minute(s) after they are stored.`);
 console.log(
     `Uploads are capped at ${UPLOAD_MAX_MB} MB, one every ${UPLOAD_COOLDOWN_SECONDS} second(s) per client.`,
@@ -30,7 +30,7 @@ const server = app.listen(PORT);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
-        stopUploadCleanup();
+        // stopUploadCleanup();
         server.close(() => process.exit(0));
     });
 }
