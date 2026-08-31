@@ -12,7 +12,7 @@ const isTruthy = (value: unknown) => value === "1" || value === "true";
 
 export const videoRootController: RequestHandler = (req, res, next) => {
     res.json({
-        message: "video root get",
+        message: "Don't do anything please :( It's a hobby project",
     });
 };
 
@@ -41,8 +41,11 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
             }
             // The cleanup sweep expires files by mtime, so the same clock drives the
             // countdown the page shows.
-            const remainingMs = stats.mtimeMs + UPLOAD_TTL_MS - Date.now();
-            res.type("html").send(renderDownloadPage(filename, rawUrl, remainingMs));
+            const expiresAtMs = stats.mtimeMs + UPLOAD_TTL_MS;
+            // The page is a snapshot of a deadline; a cached copy would show a
+            // stale countdown, so every reload has to come back here.
+            res.set("Cache-Control", "no-store");
+            res.type("html").send(renderDownloadPage(filename, rawUrl, expiresAtMs));
         });
     }
     stat(join(UPLOAD_DIR, id), (err, stats) => {

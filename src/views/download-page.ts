@@ -8,10 +8,13 @@ const HTML_ESCAPES: Record<string, string> = {
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]!);
 
-export const renderDownloadPage = (filename: string, rawUrl: string, remainingMs: number) => {
+export const renderDownloadPage = (filename: string, rawUrl: string, expiresAtMs: number) => {
     const name = escapeHtml(filename);
     const url = escapeHtml(rawUrl);
-    const remaining = Math.max(0, Math.round(remainingMs));
+    // An absolute instant, not a duration: a duration would restart from zero in
+    // any copy of this page the browser replays (reload, bfcache, proxy cache),
+    // which is what made the countdown appear to reset on refresh.
+    const expiresAt = Math.round(expiresAtMs);
 
     return `<!doctype html>
 <html lang="zh-Hant">
@@ -79,11 +82,14 @@ export const renderDownloadPage = (filename: string, rawUrl: string, remainingMs
         <p>沒在下載嗎? <a id="manual" href="${url}" download="${name}">點這裡下載</a></p>
     </main>
     <script>
-        var expiresAt = Date.now() + ${remaining};
+        var expiresAt = ${expiresAt};
         var expiry = document.getElementById("expiry");
         (function tick() {
             var left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
-            expiry.textContent = Math.floor(left / 60) + " 分 " + (left % 60) + " 秒";
+            expiry.textContent =
+                Math.floor(left / 3600) + " 時 " +
+                Math.floor((left % 3600) / 60) + " 分 " +
+                (left % 60) + " 秒";
             if (left > 0) setTimeout(tick, 1000);
         })();
         setTimeout(function () {
