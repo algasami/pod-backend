@@ -16,7 +16,7 @@ const b64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
 export class PodAuth {
     /**
      * @param baseUrl origin of the pod backend, e.g. "https://pod.example.com"
-     * @param identity the JSON written by scripts/keygen.mjs
+     * @param identity the JSON written by the frontend repo's scripts/keygen.mjs
      */
     constructor(baseUrl, identity) {
         this.baseUrl = baseUrl.replace(/\/$/, "");
