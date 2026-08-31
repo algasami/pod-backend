@@ -8,4 +8,4 @@ app.use(cors());
 app.use(videoRoutes);
 
 app.use(errorHandler);
-app.listen(3000);
+app.listen(3380);
