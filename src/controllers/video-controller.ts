@@ -19,9 +19,9 @@ export const videoRootController: RequestHandler = (req, res, next) => {
 export const videoGetController: RequestHandler<{ id: string }> = (req, res, next) => {
     const { id } = req.params;
 
-    if (!ID_PATTERN.test(id)) {
-        return res.status(400).json({ message: "Invalid video id." });
-    }
+    // if (!ID_PATTERN.test(id)) {
+    //     return res.status(400).json({ message: "Invalid video id." });
+    // }
 
     const ext = extname(id);
     const filename = ext ? id : `${id}.mp4`;

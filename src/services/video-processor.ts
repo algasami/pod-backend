@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import { randomUUIDv7 } from "crypto";
 import { rm } from "fs/promises";
-import { resolve } from "path";
+import path, { resolve } from "path";
 import {
     FFMPEG_BIN,
     FFPROBE_BIN,
@@ -109,7 +109,7 @@ const ENCODE_ARGS = [
  */
 export async function processVideo(inputFilename: string, opts: ProcessOptions): Promise<string> {
     const input = resolve(UPLOAD_DIR, inputFilename);
-    const outputFilename = randomUUIDv7() + ".mp4";
+    const outputFilename = path.parse(inputFilename).name + "-edit.mp4";
     const output = resolve(UPLOAD_DIR, outputFilename);
 
     const recHasAudio = await hasAudioStream(input);
