@@ -13,24 +13,69 @@ export type AuthorizedKey = {
 };
 
 /**
- * The line format mirrors OpenSSH's authorized_keys closely enough to be
- * familiar: a type, the key, and a free-form comment.
+ * The file is an OpenSSH authorized_keys file, so `ssh-keygen -t ed25519` output
+ * can be copied in as it stands:
  *
- *     ed25519 <base64 SPKI DER> alice@laptop
+ *     ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... alice@laptop
  *
- * Blank lines and `#` comments are skipped. The key is a plain SPKI export
- * rather than the SSH wire format, because that is what both Node's
- * createPublicKey and the browser's WebCrypto hand you directly.
+ * Blank lines and `#` comments are skipped, as are keys of any other type.
  */
-const KEY_TYPE = "ed25519";
+const KEY_TYPE = "ssh-ed25519";
+
+/** Ed25519 SPKI is a fixed 12-byte prefix followed by the 32-byte key. */
+const SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 /**
- * SSH names a key by the base64 SHA-256 of its wire bytes; the same idea over
- * the SPKI bytes gives a stable, collision-resistant handle the client can send
- * without revealing anything the server does not already know.
+ * Reads one SSH wire-format string: a 32-bit big-endian length, then that many
+ * bytes.
  */
-export const fingerprintOf = (spki: Buffer) =>
-    "SHA256:" + createHash("sha256").update(spki).digest("base64url");
+const readWireString = (buf: Buffer, offset: number) => {
+    if (offset + 4 > buf.length) throw new Error("truncated key blob");
+    const length = buf.readUInt32BE(offset);
+    const start = offset + 4;
+    const end = start + length;
+    if (end > buf.length) throw new Error("truncated key blob");
+    return { value: buf.subarray(start, end), next: end };
+};
+
+/** The inverse: length-prefixes a chunk the way the SSH wire format wants. */
+const wireString = (value: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(value.length);
+    return Buffer.concat([length, value]);
+};
+
+/** The blob an OpenSSH public key base64-encodes: the type, then the key. */
+const wireBlobFor = (rawKey: Buffer) =>
+    Buffer.concat([wireString(Buffer.from(KEY_TYPE, "utf8")), wireString(rawKey)]);
+
+/**
+ * The same fingerprint `ssh-keygen -lf` prints — the base64 SHA-256 of the wire
+ * blob, without padding — so what the page displays can be checked against the
+ * key file by eye.
+ */
+export const fingerprintOf = (rawKey: Buffer) =>
+    "SHA256:" +
+    createHash("sha256").update(wireBlobFor(rawKey)).digest("base64").replace(/=+$/, "");
+
+/**
+ * Pulls the raw 32-byte key out of a base64 OpenSSH public key, rejecting
+ * anything whose blob does not describe an Ed25519 key of the right size.
+ */
+const rawKeyFromEncoded = (encoded: string) => {
+    const blob = Buffer.from(encoded, "base64");
+
+    const type = readWireString(blob, 0);
+    if (type.value.toString("utf8") !== KEY_TYPE) {
+        throw new Error(`blob declares ${type.value.toString("utf8")}, not ${KEY_TYPE}`);
+    }
+
+    const key = readWireString(blob, type.next);
+    if (key.next !== blob.length) throw new Error("trailing bytes after key");
+    if (key.value.length !== 32) throw new Error(`key is ${key.value.length} bytes, expected 32`);
+
+    return key.value;
+};
 
 const parseAuthorizedKeys = (contents: string) => {
     const keys = new Map<string, AuthorizedKey>();
@@ -42,27 +87,28 @@ const parseAuthorizedKeys = (contents: string) => {
         const [type, encoded, ...rest] = trimmed.split(/\s+/);
         const lineNo = index + 1;
 
-        if (type?.toLowerCase() !== KEY_TYPE || !encoded) {
-            console.warn(`[auth] ignoring line ${lineNo}: expected "${KEY_TYPE} <base64> [comment]".`);
+        if (type !== KEY_TYPE || !encoded) {
+            console.warn(
+                `[auth] ignoring line ${lineNo}: expected "${KEY_TYPE} <base64> [comment]".`,
+            );
             return;
         }
 
-        let spki: Buffer;
+        let rawKey: Buffer;
         let key: KeyObject;
         try {
-            spki = Buffer.from(encoded, "base64");
-            key = createPublicKey({ key: spki, format: "der", type: "spki" });
+            rawKey = rawKeyFromEncoded(encoded);
+            key = createPublicKey({
+                key: Buffer.concat([SPKI_PREFIX, rawKey]),
+                format: "der",
+                type: "spki",
+            });
         } catch (err) {
-            console.warn(`[auth] ignoring line ${lineNo}: key is not a readable SPKI blob.`, err);
+            console.warn(`[auth] ignoring line ${lineNo}: ${(err as Error).message}.`);
             return;
         }
 
-        if (key.asymmetricKeyType !== "ed25519") {
-            console.warn(`[auth] ignoring line ${lineNo}: key is ${key.asymmetricKeyType}, not ed25519.`);
-            return;
-        }
-
-        const fingerprint = fingerprintOf(spki);
+        const fingerprint = fingerprintOf(rawKey);
         keys.set(fingerprint, { fingerprint, comment: rest.join(" "), key });
     });
 
