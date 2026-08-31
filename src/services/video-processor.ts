@@ -5,23 +5,14 @@ import { resolve } from "path";
 import {
     FFMPEG_BIN,
     FFPROBE_BIN,
-    INTRO_PATH,
     LOGO_PATH,
     OUT_AUDIO_BITRATE,
-    OUT_FPS,
-    OUT_HEIGHT,
     OUT_SAMPLE_RATE,
     OUT_VIDEO_BITRATE,
-    OUT_WIDTH,
     UPLOAD_DIR,
-    WATERMARK_MARGIN,
-    WATERMARK_WIDTH,
+    WATERMARK_MARGIN_RATIO,
+    WATERMARK_WIDTH_RATIO,
 } from "../config.js";
-
-export type ProcessOptions = {
-    watermark: boolean;
-    intro: boolean;
-};
 
 function run(bin: string, args: string[]): Promise<string> {
     return new Promise((res, rej) => {
@@ -40,34 +31,48 @@ function run(bin: string, args: string[]): Promise<string> {
     });
 }
 
-async function hasAudioStream(path: string): Promise<boolean> {
+type InputInfo = {
+    /** Frame size as the filter graph will see it, i.e. after autorotation. */
+    width: number;
+    height: number;
+    hasAudio: boolean;
+};
+
+type ProbedStream = {
+    codec_type?: string;
+    width?: number;
+    height?: number;
+    side_data_list?: { rotation?: number }[];
+};
+
+async function probeInput(path: string): Promise<InputInfo> {
     const out = await run(FFPROBE_BIN, [
         "-v",
         "error",
-        "-select_streams",
-        "a",
         "-show_entries",
-        "stream=index",
+        "stream=codec_type,width,height:stream_side_data=rotation",
         "-of",
-        "csv=p=0",
+        "json",
         path,
     ]);
-    return out.length > 0;
-}
 
-function normaliseVideo(label: string, out: string) {
-    return (
-        `[${label}]scale=${OUT_WIDTH}:${OUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
-        `pad=${OUT_WIDTH}:${OUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${OUT_FPS},` +
-        `format=yuv420p[${out}]`
-    );
-}
+    const streams: ProbedStream[] = JSON.parse(out).streams ?? [];
+    const video = streams.find((s) => s.codec_type === "video");
+    if (!video?.width || !video?.height) {
+        throw new Error("Upload has no decodable video stream.");
+    }
 
-function normaliseAudio(label: string, out: string) {
-    return (
-        `[${label}]aformat=sample_rates=${OUT_SAMPLE_RATE}:channel_layouts=stereo,` +
-        `asetpts=N/SR/TB[${out}]`
-    );
+    // ffmpeg autorotates on decode, so a 90°/270° stream reaches the filter
+    // graph with its axes already swapped. Size the overlay against that, not
+    // against the stored dimensions.
+    const rotation = video.side_data_list?.find((d) => typeof d.rotation === "number")?.rotation;
+    const swapped = Math.abs(rotation ?? 0) % 180 === 90;
+
+    return {
+        width: swapped ? video.height : video.width,
+        height: swapped ? video.width : video.height,
+        hasAudio: streams.some((s) => s.codec_type === "audio"),
+    };
 }
 
 const ENCODE_ARGS = [
@@ -75,14 +80,12 @@ const ENCODE_ARGS = [
     "libx264",
     "-profile:v",
     "high",
-    "-level",
-    "4.0",
+    // no explicit -level: the output takes the source's shape, so a level that
+    // fits one upload can be violated by the next. x264 picks a conformant one.
     "-preset",
     "veryfast",
     "-pix_fmt",
     "yuv420p",
-    "-r",
-    String(OUT_FPS),
     "-b:v",
     OUT_VIDEO_BITRATE,
     "-maxrate",
@@ -104,86 +107,64 @@ const ENCODE_ARGS = [
 ];
 
 /**
- * Builds the processed deliverable next to the raw upload and returns its
- * filename. The raw upload is left in place as the master.
+ * Stamps the logo into the top-right corner of the upload and returns the
+ * deliverable's filename.
+ *
+ * The frame is left exactly as it arrived — no scaling, padding or frame-rate
+ * conversion — so a 9:16 recording stays 9:16. On success the raw upload is
+ * removed: the deliverable replaces it rather than sitting beside it, so
+ * `user-uploads` holds one file per recording.
  */
-export async function processVideo(inputFilename: string, opts: ProcessOptions): Promise<string> {
+export async function processVideo(inputFilename: string): Promise<string> {
     const input = resolve(UPLOAD_DIR, inputFilename);
     const outputFilename = randomUUIDv7() + ".mp4";
     const output = resolve(UPLOAD_DIR, outputFilename);
 
-    const recHasAudio = await hasAudioStream(input);
+    const { width, height, hasAudio } = await probeInput(input);
 
-    const args: string[] = ["-y"];
-    const filters: string[] = [];
-
-    // input order: [intro?] recording [logo?] [silence?]
-    let idx = 0;
-    let introIdx = -1;
-    if (opts.intro) {
-        args.push("-i", INTRO_PATH);
-        introIdx = idx++;
-    }
-    args.push("-i", input);
-    const recIdx = idx++;
-    let logoIdx = -1;
-    if (opts.watermark) {
-        args.push("-i", LOGO_PATH);
-        logoIdx = idx++;
-    }
-    // a recording whose mic delivered nothing has no audio track at all; concat
-    // still needs one, so synthesise silence rather than failing the upload
-    let silenceIdx = -1;
-    if (!recHasAudio) {
+    const args: string[] = ["-y", "-i", input, "-i", LOGO_PATH];
+    if (!hasAudio) {
+        // a recording whose mic delivered nothing has no audio track at all;
+        // synthesise silence rather than ship a video-only file
         args.push(
             "-f",
             "lavfi",
-            "-t",
-            "0.1",
             "-i",
             `anullsrc=channel_layout=stereo:sample_rate=${OUT_SAMPLE_RATE}`,
         );
-        silenceIdx = idx++;
     }
 
-    filters.push(normaliseVideo(`${recIdx}:v`, "recbase"));
-    let recVideo = "recbase";
+    // yuv420p cannot represent an odd width or height, and nothing guarantees
+    // an upload has even ones — WebM in particular allows odd. Trimming a pixel
+    // is the smallest correction that keeps the shape.
+    const evenWidth = width - (width % 2);
+    const evenHeight = height - (height % 2);
 
-    if (opts.watermark) {
-        filters.push(`[${logoIdx}:v]scale=${WATERMARK_WIDTH}:-1[logo]`);
-        filters.push(
-            `[recbase][logo]overlay=W-w-${WATERMARK_MARGIN}:H-h-${WATERMARK_MARGIN}[recwm]`,
-        );
-        recVideo = "recwm";
+    const filters: string[] = [];
+    let base = "0:v";
+    if (evenWidth !== width || evenHeight !== height) {
+        filters.push(`[0:v]scale=${evenWidth}:${evenHeight}[base]`);
+        base = "base";
     }
 
-    const recAudioSrc = recHasAudio ? `${recIdx}:a` : `${silenceIdx}:a`;
-    filters.push(normaliseAudio(recAudioSrc, "reca"));
-
-    let vOut: string;
-    let aOut: string;
-
-    if (opts.intro) {
-        filters.push(normaliseVideo(`${introIdx}:v`, "introv"));
-        filters.push(normaliseAudio(`${introIdx}:a`, "introa"));
-        filters.push(`[introv][introa][${recVideo}][reca]concat=n=2:v=1:a=1[v][a]`);
-        vOut = "[v]";
-        aOut = "[a]";
-    } else {
-        vOut = `[${recVideo}]`;
-        aOut = "[reca]";
-    }
+    const logoWidth = Math.round(evenWidth * WATERMARK_WIDTH_RATIO);
+    const margin = Math.round(evenWidth * WATERMARK_MARGIN_RATIO);
+    filters.push(`[1:v]scale=${logoWidth}:-2[logo]`);
+    filters.push(`[${base}][logo]overlay=x=W-w-${margin}:y=${margin},format=yuv420p[v]`);
 
     args.push(
         "-filter_complex",
         filters.join(";"),
         "-map",
-        vOut,
+        "[v]",
         "-map",
-        aOut,
-        ...ENCODE_ARGS,
-        output,
+        hasAudio ? "0:a" : "2:a",
     );
+    if (!hasAudio) {
+        // anullsrc never ends on its own
+        args.push("-shortest");
+    }
+    args.push(...ENCODE_ARGS, output);
 
     try {
         await run(FFMPEG_BIN, args);
@@ -192,6 +173,10 @@ export async function processVideo(inputFilename: string, opts: ProcessOptions):
         await rm(output, { force: true });
         throw err;
     }
+
+    // only once the deliverable is safely on disk: a failure above falls back
+    // to serving the raw upload, which has to still be there
+    await rm(input, { force: true });
 
     return outputFilename;
 }

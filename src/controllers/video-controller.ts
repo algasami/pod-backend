@@ -76,14 +76,13 @@ export const videoPostController: RequestHandler = async (req, res, next) => {
 
     const raw = req.file.filename;
     const watermark = req.body?.watermark === "1";
-    const intro = req.body?.intro === "1";
 
-    if (!watermark && !intro) {
+    if (!watermark) {
         return res.json({ message: "Success", id: raw });
     }
 
     try {
-        const id = await processVideo(raw, { watermark, intro });
+        const id = await processVideo(raw);
         res.json({ message: "Success", id });
     } catch (err) {
         console.error("[process] failed, serving raw upload", err);
