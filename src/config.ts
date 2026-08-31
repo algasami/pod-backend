@@ -20,7 +20,7 @@ export const WATERMARK_MARGIN_RATIO = 0.0167;
 
 export const PORT = readPositiveNumber("PORT", 3380);
 
-export const UPLOAD_TTL_MINUTES = readPositiveNumber("UPLOAD_TTL_MINUTES", 30);
+export const UPLOAD_TTL_MINUTES = readPositiveNumber("UPLOAD_TTL_MINUTES", 24 * 60);
 
 export const UPLOAD_MAX_MB = readPositiveNumber("UPLOAD_MAX_MB", 256);
 
