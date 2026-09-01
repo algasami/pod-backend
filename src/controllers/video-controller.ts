@@ -19,9 +19,9 @@ export const videoRootController: RequestHandler = (req, res, next) => {
 export const videoGetController: RequestHandler<{ id: string }> = (req, res, next) => {
     const { id } = req.params;
 
-    // if (!ID_PATTERN.test(id)) {
-    //     return res.status(400).json({ message: "Invalid video id." });
-    // }
+    if (!ID_PATTERN.test(id)) {
+        return res.status(400).json({ message: "Invalid video id." });
+    }
 
     const ext = extname(id);
     const filename = ext ? id : `${id}.mp4`;
@@ -39,9 +39,12 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
                 }
                 return next(err);
             }
-            // The cleanup sweep expires files by mtime, so the same clock drives the
-            // countdown the page shows.
+            // Expiry is enforced here at serve time, not by a deletion sweep,
+            // so the file may still exist on disk past its deadline.
             const expiresAtMs = stats.mtimeMs + UPLOAD_TTL_MS;
+            if (expiresAtMs <= Date.now()) {
+                return res.status(404).json({ message: "Video not found." });
+            }
             // The page is a snapshot of a deadline; a cached copy would show a
             // stale countdown, so every reload has to come back here.
             res.set("Cache-Control", "no-store");

@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 import { randomUUIDv7 } from "crypto";
-import { rm } from "fs/promises";
+import { rename, rm } from "fs/promises";
 import path, { resolve } from "path";
 import {
     FFMPEG_BIN,
@@ -217,8 +217,14 @@ export async function processVideo(inputFilename: string, opts: ProcessOptions):
         return inputFilename;
     }
 
-    const outputFilename = path.parse(inputFilename).name + "-edit.mp4";
+    // The deliverable keeps the upload's id and takes the container ffmpeg
+    // actually wrote, so a .mov upload becomes <id>.mp4 rather than <id>.mov.
+    const outputFilename = path.parse(inputFilename).name + ".mp4";
     const output = resolve(UPLOAD_DIR, outputFilename);
+    // ffmpeg cannot overwrite the file it is reading, and a half-written file
+    // must never be visible: encode under a temp name the GET route's id
+    // pattern rejects (two extensions), then rename into place atomically.
+    const partial = resolve(UPLOAD_DIR, path.parse(inputFilename).name + ".tmp.mp4");
 
     let idx = 0;
     const args: string[] = ["-y", "-i", input];
@@ -279,19 +285,23 @@ export async function processVideo(inputFilename: string, opts: ProcessOptions):
         // anullsrc never ends on its own
         args.push("-shortest");
     }
-    args.push(...ENCODE_ARGS, output);
+    args.push(...ENCODE_ARGS, partial);
 
     try {
         await run(FFMPEG_BIN, args);
     } catch (err) {
-        // never leave a half-written file behind for the GET route to serve
-        await rm(output, { force: true });
+        await rm(partial, { force: true });
         throw err;
     }
 
-    // only once the deliverable is safely on disk: a failure above falls back
-    // to serving the raw upload, which has to still be there
-    await rm(input, { force: true });
+    // The rename replaces the upload when the names coincide (an .mp4 source);
+    // otherwise the source is removed only once the deliverable is in place —
+    // a failure above falls back to serving the raw upload, which has to
+    // still be there.
+    await rename(partial, output);
+    if (input !== output) {
+        await rm(input, { force: true });
+    }
 
     return outputFilename;
 }

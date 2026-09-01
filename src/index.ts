@@ -41,7 +41,9 @@ if (AUTH_REQUIRED) {
 } else {
     console.warn("AUTH_REQUIRED=false — uploads are open to anyone who can reach this server.");
 }
-console.log(`Uploads are removed ${UPLOAD_TTL_MINUTES} minute(s) after they are stored.`);
+console.log(
+    `Uploads stop being served ${UPLOAD_TTL_MINUTES} minute(s) after they are stored (no deletion sweep).`,
+);
 console.log(
     `Uploads are capped at ${UPLOAD_MAX_MB} MB, one every ${UPLOAD_COOLDOWN_SECONDS} second(s) per client.`,
 );
