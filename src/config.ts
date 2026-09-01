@@ -73,6 +73,11 @@ export const AUTH_TOKEN_SECRET = (() => {
 // Pending challenges are unauthenticated state, so they are capped.
 export const AUTH_MAX_PENDING_CHALLENGES = 1024;
 
+// A legitimate client makes two auth calls per handshake and one handshake per
+// token lifetime; this cap only exists so a flood cannot churn the challenge
+// pool and evict other clients' pending challenges.
+export const AUTH_RATE_LIMIT_PER_MINUTE = readPositiveNumber("AUTH_RATE_LIMIT_PER_MINUTE", 10);
+
 export const AUTH_CHALLENGE_TTL_MS = AUTH_CHALLENGE_TTL_SECONDS * 1000;
 export const AUTH_TOKEN_TTL_MS = AUTH_TOKEN_TTL_MINUTES * 60_000;
 

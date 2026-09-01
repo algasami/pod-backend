@@ -295,9 +295,8 @@ export async function processVideo(inputFilename: string, opts: ProcessOptions):
     }
 
     // The rename replaces the upload when the names coincide (an .mp4 source);
-    // otherwise the source is removed only once the deliverable is in place —
-    // a failure above falls back to serving the raw upload, which has to
-    // still be there.
+    // otherwise the source is removed only once the deliverable is in place.
+    // On failure the source is left behind for the controller to dispose of.
     await rename(partial, output);
     if (input !== output) {
         await rm(input, { force: true });

@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import { processVideo } from "../services/video-processor.js";
 import { stat } from "fs";
+import { rm } from "fs/promises";
 import { extname, join } from "path";
 import { UPLOAD_DIR, UPLOAD_TTL_MS } from "../config.js";
 import { renderDownloadPage } from "../views/download-page.js";
@@ -53,6 +54,9 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
     }
     stat(join(UPLOAD_DIR, id), (err, stats) => {
         if (err) {
+            if (err.code === "ENOENT") {
+                return res.status(404).json({ message: "Video not found." });
+            }
             return next(err);
         }
         if (stats.mtimeMs + UPLOAD_TTL_MS - Date.now() <= 0) {
@@ -91,7 +95,11 @@ export const videoPostController: RequestHandler = async (req, res, next) => {
         const id = await processVideo(raw, { watermark, vertical });
         res.json({ message: "Success", id });
     } catch (err) {
-        console.error("[process] failed, serving raw upload", err);
-        res.json({ message: "Processed failed; raw recording returned.", id: raw });
+        // The file filter only checks the name and declared type, so this is
+        // where a fake video actually gets caught: if ffmpeg cannot read it,
+        // it is not hosted at all.
+        console.error("[process] failed, rejecting upload", err);
+        await rm(join(UPLOAD_DIR, raw), { force: true });
+        res.status(422).json({ message: "Upload could not be processed as video.", id: "" });
     }
 };

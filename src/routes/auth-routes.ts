@@ -4,6 +4,7 @@ import {
     AUTH_REQUIRED,
     AUTH_TOKEN_TTL_MINUTES,
 } from "../config.js";
+import { authThrottle } from "../middlewares/auth-throttle.js";
 import { findAuthorizedKey, verifyWithKey } from "../services/auth-keys.js";
 import {
     challengeMessage,
@@ -15,8 +16,9 @@ import {
 const asString = (value: unknown) => (typeof value === "string" ? value : "");
 
 export const authRoutes = Router()
+    // Throttle before parsing: a rate-limited caller gets no body read at all.
     // Only the handshake needs a JSON body; the upload route stays multipart.
-    .use("/auth", express.json({ limit: "8kb" }))
+    .use("/auth", authThrottle, express.json({ limit: "8kb" }))
 
     .get("/auth/challenge", (req, res) => {
         const { challenge, expiresAt } = issueChallenge();

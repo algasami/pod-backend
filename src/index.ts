@@ -3,7 +3,6 @@ import cors from "cors";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { videoRoutes } from "./routes/video-routes.js";
 import { authRoutes } from "./routes/auth-routes.js";
-import { startUploadCleanup } from "./services/upload-cleanup.js";
 import { securityHeaders } from "./middlewares/security-headers.js";
 import { loadAuthorizedKeys } from "./services/auth-keys.js";
 import {
@@ -29,7 +28,6 @@ app.use(videoRoutes);
 
 app.use(errorHandler);
 
-// const stopUploadCleanup = startUploadCleanup();
 if (AUTH_REQUIRED) {
     const keys = loadAuthorizedKeys();
     if (keys.size === 0) {
@@ -52,7 +50,6 @@ const server = app.listen(PORT);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
-        // stopUploadCleanup();
         server.close(() => process.exit(0));
     });
 }

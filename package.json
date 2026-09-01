@@ -4,27 +4,30 @@
     "description": "",
     "main": "index.js",
     "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1",
+        "test": "node --import tsx --test \"test/*.test.ts\"",
         "dev": "tsx watch src/index.ts",
         "build": "tsc",
-        "start": "node dist/index.js"
+        "start": "node dist/index.js",
+        "cleanup": "tsx src/cleanup.ts"
     },
     "keywords": [],
     "author": "",
     "license": "ISC",
     "type": "module",
+    "engines": {
+        "node": ">=24.20.0"
+    },
     "devDependencies": {
         "@types/cors": "^2.8.19",
         "@types/express": "^5.0.6",
+        "@types/multer": "^2.2.0",
         "@types/node": "^26.4.0",
         "tsx": "^4.23.13",
         "typescript": "^7.0.2"
     },
     "dependencies": {
-        "@types/multer": "^2.2.0",
         "cors": "^2.8.6",
         "express": "^5.2.1",
-        "multer": "^2.3.0",
-        "uuid": "^14.0.2"
+        "multer": "^2.3.0"
     }
 }
