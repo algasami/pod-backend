@@ -184,14 +184,62 @@ const ENCODE_ARGS = [
     "+faststart",
 ];
 
+// Containers whose index sits in a header the player reads up front, so the
+// muxer has to be told to put it before the payload rather than after it.
+const FASTSTART_EXTENSIONS = new Set([".mp4", ".m4v", ".mov"]);
+
+/**
+ * Rewrites an upload's container without touching a single frame.
+ *
+ * A take that needs no filtering still must not be served exactly as it
+ * arrived. Chrome's MediaRecorder emits a *fragmented* MP4: `mvhd` carries a
+ * duration of 0 and the real timing lives in the per-fragment `moof` boxes.
+ * ffprobe walks those and reports a sane duration, but a player that trusts the
+ * header — Windows' among them — shows the take as a live stream with no length
+ * and no seek bar. A stream copy rebuilds a normal index and costs no quality
+ * and almost no time, which is cheap enough to be worth doing on every upload
+ * that skips the filter graph.
+ *
+ * Best-effort by design: not every container hands its own streams back
+ * verbatim, and an upload that needs no filtering is already a valid
+ * deliverable, so a failed copy leaves the original in place rather than
+ * failing the upload.
+ */
+async function remuxInPlace(inputFilename: string): Promise<string> {
+    const ext = path.extname(inputFilename).toLowerCase();
+    const input = resolve(UPLOAD_DIR, inputFilename);
+    // Same temp-name trick as the encode path: two extensions, so the GET
+    // route's id pattern cannot serve a half-written file.
+    const partial = resolve(UPLOAD_DIR, path.parse(inputFilename).name + ".tmp" + ext);
+
+    const args = ["-y", "-i", input, "-c", "copy"];
+    if (FASTSTART_EXTENSIONS.has(ext)) {
+        args.push("-movflags", "+faststart");
+    }
+    args.push(partial);
+
+    try {
+        await run(FFMPEG_BIN, args);
+    } catch (err) {
+        console.warn("[process] remux failed; serving the upload as it arrived", err);
+        await rm(partial, { force: true });
+        return inputFilename;
+    }
+
+    // Same id and same container as the upload, so this replaces it in place
+    // and `user-uploads` still holds one file per recording.
+    await rename(partial, input);
+    return inputFilename;
+}
+
 /**
  * Builds the deliverable for an upload and returns its filename.
  *
  * The frame keeps its shape: the only geometry applied is the optional 9:16
  * crop the operator asked for and the 1080p ceiling, both of which scale or
  * trim rather than pad. When a take needs none of that — no crop, no watermark,
- * and already under the ceiling — the upload is its own deliverable and no
- * re-encode happens at all.
+ * and already under the ceiling — nothing is re-encoded; the upload is only
+ * remuxed so its container carries a duration.
  *
  * Otherwise the raw upload is removed once the deliverable is safely written,
  * so `user-uploads` holds one file per recording.
@@ -214,7 +262,7 @@ export async function processVideo(inputFilename: string, opts: ProcessOptions):
     const needsScale = out.width !== cropped.width || out.height !== cropped.height;
 
     if (!needsCrop && !needsScale && !opts.watermark) {
-        return inputFilename;
+        return remuxInPlace(inputFilename);
     }
 
     // The deliverable keeps the upload's id and takes the container ffmpeg
