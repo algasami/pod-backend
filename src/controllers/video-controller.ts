@@ -24,8 +24,10 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
         return res.status(400).json({ message: "Invalid video id." });
     }
 
-    const ext = extname(id);
-    const filename = ext ? id : `${id}.mp4`;
+    // Every stored file carries an extension, so a bare id is a link to the
+    // .mp4 deliverable; `filename` is what actually exists on disk.
+    const filename = extname(id) ? id : `${id}.mp4`;
+    const ext = extname(filename);
     const inline = isTruthy(req.query.inline);
     const raw = isTruthy(req.query.raw);
 
@@ -33,7 +35,7 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
 
     if (wantsHtml && !raw && !inline) {
         const rawUrl = `${req.baseUrl}/${encodeURIComponent(id)}?raw=1`;
-        return stat(join(UPLOAD_DIR, id), (err, stats) => {
+        return stat(join(UPLOAD_DIR, filename), (err, stats) => {
             if (err) {
                 if (err.code === "ENOENT") {
                     return res.status(404).json({ message: "Video not found." });
@@ -52,7 +54,7 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
             res.type("html").send(renderDownloadPage(filename, rawUrl, expiresAtMs));
         });
     }
-    stat(join(UPLOAD_DIR, id), (err, stats) => {
+    stat(join(UPLOAD_DIR, filename), (err, stats) => {
         if (err) {
             if (err.code === "ENOENT") {
                 return res.status(404).json({ message: "Video not found." });
@@ -69,7 +71,7 @@ export const videoGetController: RequestHandler<{ id: string }> = (req, res, nex
             headers["Content-Disposition"] = `attachment; filename="${filename}"`;
         }
 
-        res.sendFile(id, { root: UPLOAD_DIR, headers }, (err) => {
+        res.sendFile(filename, { root: UPLOAD_DIR, headers }, (err) => {
             if (!err || res.headersSent) return;
             if ((err as NodeJS.ErrnoException).code === "ENOENT") {
                 return res.status(404).json({ message: "Video not found." });

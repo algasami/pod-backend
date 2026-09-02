@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { AUTH_REQUIRED } from "../config.js";
+import { findAuthorizedKey } from "../services/auth-keys.js";
 import { verifyToken } from "../services/auth-session.js";
 
 declare global {
@@ -14,11 +15,11 @@ declare global {
 /**
  * Gates a route behind a token from the challenge-response handshake.
  *
- * The token is the only thing checked here — the signature was verified once,
- * at /auth/verify, and the token is the server's own statement that it went
- * through. A revoked key keeps working until its token expires, which is the
- * usual trade for not re-verifying a signature on every request; shorten
- * AUTH_TOKEN_TTL_MINUTES if that window matters.
+ * The signature was verified once, at /auth/verify, and the token is the
+ * server's own statement that it went through, so no signature is re-checked
+ * here. The key itself is looked up again, though: the authorized-keys file is
+ * re-read whenever it changes, so removing a line revokes that client on its
+ * very next request rather than when its token happens to expire.
  */
 export const requireAuth: RequestHandler = (req, res, next) => {
     if (!AUTH_REQUIRED) return next();
@@ -32,7 +33,7 @@ export const requireAuth: RequestHandler = (req, res, next) => {
     }
 
     const fingerprint = verifyToken(token);
-    if (fingerprint === null) {
+    if (fingerprint === null || findAuthorizedKey(fingerprint) === null) {
         res.set("WWW-Authenticate", 'Bearer error="invalid_token"');
         return res.status(401).json({ message: "Session expired or invalid.", id: "" });
     }

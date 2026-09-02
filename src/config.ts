@@ -63,11 +63,25 @@ export const AUTH_TOKEN_TTL_MINUTES = readPositiveNumber("AUTH_TOKEN_TTL_MINUTES
 // Without a configured secret the server picks one at boot, which is fine for a
 // single process — it just means every restart invalidates outstanding tokens
 // and clients have to sign a fresh challenge.
+//
+// A configured secret is the only thing standing between anyone and a forged
+// upload token, so a short one is refused outright rather than accepted and
+// brute-forced later. `openssl rand -base64 32` makes a suitable one.
+export const AUTH_TOKEN_SECRET_MIN_BYTES = 32;
+
 export const AUTH_TOKEN_SECRET = (() => {
     const configured = process.env.AUTH_TOKEN_SECRET?.trim();
-    if (configured) return Buffer.from(configured, "utf8");
-    console.warn("[auth] AUTH_TOKEN_SECRET is unset; tokens will not survive a restart.");
-    return randomBytes(32);
+    if (!configured) {
+        console.warn("[auth] AUTH_TOKEN_SECRET is unset; tokens will not survive a restart.");
+        return randomBytes(32);
+    }
+    const secret = Buffer.from(configured, "utf8");
+    if (secret.length < AUTH_TOKEN_SECRET_MIN_BYTES) {
+        throw new Error(
+            `AUTH_TOKEN_SECRET must be at least ${AUTH_TOKEN_SECRET_MIN_BYTES} bytes, received ${secret.length}.`,
+        );
+    }
+    return secret;
 })();
 
 // Pending challenges are unauthenticated state, so they are capped.
