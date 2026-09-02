@@ -22,7 +22,7 @@ export const OUT_SAMPLE_RATE = 48000;
 // The output keeps whatever shape the source has, so the watermark is sized
 // against each frame rather than a fixed canvas. The frontend preview mirrors
 // these ratios — see .wm-preview in index.html.
-export const WATERMARK_WIDTH_RATIO = 0.1;
+export const WATERMARK_WIDTH_RATIO = 0.35;
 export const WATERMARK_MARGIN_RATIO = 0.0167;
 
 export const PORT = readPositiveNumber("PORT", 3380);
